@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="color-scheme" content="light dark">
+        <title>Password Manager</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body class="popup">
+        <header class="popup-header">
+            <div id="fromiCloudPasswords"></div>
+            <button id="openSettings" class="icon-button" type="button">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="4.4"/><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8 3.4 3.4"/></g></svg>
+            </button>
+        </header>
+        <img id="iCloudIconId" class="iCloudIcon" src="images/PasswordsExtensionIcon_128.png" height="46" width="46" alt="" />
+        <div id="divGenerated" class="box generated" hidden>
+            <p id="generatedTitle" class="caption"></p>
+            <div class="generated-row">
+                <code id="generatedPassword" tabindex="0"></code>
+                <button id="copyGenerated" class="button" type="button"></button>
+            </div>
+        </div>
+        <div id="divDownloadPage" class="box">
+            <p id="downloadMessage" class="titleline"></p>
+            <button id="downloadButton" class="button"></button>
+        </div>
+        <div id="divOpeniC4WPage" class="box">
+            <p id="idOpeniC4WTitle" class="titleline"></p>
+            <button id="idOpeniC4WButton" class="button" href="#"></button>
+        </div>
+        <div id="divPIN" class="box">
+            <p class="titleline" id="divPINTitle"></p>
+            <p id="divPINMessage" class="messageline"></p>
+            <div class="pinbox">
+                <input class="PIN" id="PIN0" maxlength="1" size="1" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]?" />
+                <input class="PIN" id="PIN1" maxlength="1" size="1" inputmode="numeric" pattern="[0-9]?" />
+                <input class="PIN" id="PIN2" maxlength="1" size="1" inputmode="numeric" pattern="[0-9]?" />
+                <input class="PIN" id="PIN3" maxlength="1" size="1" inputmode="numeric" pattern="[0-9]?" />
+                <input class="PIN" id="PIN4" maxlength="1" size="1" inputmode="numeric" pattern="[0-9]?" />
+                <input class="PIN" id="PIN5" maxlength="1" size="1" inputmode="numeric" pattern="[0-9]?" />
+            </div>
+        </div>
+        <div id="divMessageBoard" class="box">
+            <p id="divMessageBoardTitle" class="titleline"></p>
+            <p id="divMessageBoardMessage" class="messageline"></p>
+            <ul class="credential-list" id="openPasswordManagerList"></ul>
+        </div>
+        <div id="divICs" class="box">
+            <p id="divICsMessage" class="caption"></p>
+            <ul class="credential-list" id="credentialList"></ul>
+        </div>
+    </body>
+    <script src="page_popup.js"></script>
+</html>

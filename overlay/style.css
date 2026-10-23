@@ -1,0 +1,361 @@
+/* Native-feeling surface for the toolbar popup and the in-page completion list. */
+:root {
+  --surface: light-dark(#ffffff, #202125);
+  --text: light-dark(#1d1d1f, #ececf0);
+  --text-secondary: light-dark(#6b6b70, #a3a3ab);
+  --hover: light-dark(rgba(0, 0, 0, 0.055), rgba(255, 255, 255, 0.075));
+  --separator: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.09));
+  --field: light-dark(#f4f4f6, #2b2c31);
+  --field-border: light-dark(rgba(0, 0, 0, 0.14), rgba(255, 255, 255, 0.14));
+  --accent: light-dark(#0a6cff, #4c9dff);
+  --accent-text: #ffffff;
+  --danger: light-dark(#d70015, #ff6961);
+  --radius: 8px;
+}
+
+body {
+  margin: 0;
+  font: 13px/1.38 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+  user-select: none;
+}
+body.completionList {
+  color-scheme: light;
+  background: transparent;
+}
+body.completionList.dark {
+  color-scheme: dark;
+}
+[hidden],
+#iCloudIconId {
+  display: none !important;
+}
+p {
+  margin: 0;
+}
+a,
+img {
+  -webkit-user-drag: none;
+}
+
+/* ---------- Toolbar popup ---------- */
+body.popup {
+  width: 320px;
+  padding: 0 0 6px;
+}
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 8px 14px;
+}
+#fromiCloudPasswords {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13px;
+}
+#fromiCloudPasswords span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+.fromiCloudPasswordsMenuIcon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: transparent;
+}
+.icon-button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+body.popup.popupWindow .popup-header {
+  display: none;
+}
+body.popup.popupWindow {
+  padding-top: 8px;
+}
+
+.box {
+  display: none;
+  padding: 2px 14px 8px;
+}
+.titleline {
+  font-size: 13px;
+  font-weight: 600;
+}
+.messageline {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.messageline.error {
+  color: var(--danger);
+}
+.caption {
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.button {
+  margin-top: 10px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--accent-text);
+  background: var(--accent);
+}
+.button:hover {
+  filter: brightness(1.08);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Verification code */
+.pinbox {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 4px;
+  direction: ltr;
+}
+input.PIN {
+  width: 36px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius);
+  font: 500 22px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: center;
+  color: var(--text);
+  background: var(--field);
+  outline: none;
+  caret-color: var(--accent);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+input.PIN:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+input.PIN:disabled {
+  opacity: 0.55;
+}
+#PIN2 {
+  margin-inline-end: 10px;
+}
+
+/* Generated password safety net */
+.generated {
+  display: block;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--separator);
+}
+.generated-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#generatedPassword {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--field);
+  filter: blur(4px);
+  transition: filter 0.15s;
+  user-select: all;
+}
+#generatedPassword:hover,
+#generatedPassword:focus {
+  filter: none;
+}
+.generated .button {
+  margin: 0;
+}
+
+/* ---------- Lists (popup and completion list) ---------- */
+ul.credential-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.popup ul.credential-list {
+  margin: 4px -8px 0;
+}
+.credential-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 10px;
+  box-sizing: border-box;
+  border-radius: 6px;
+}
+.popup .credential-list li {
+  margin: 0 2px;
+}
+.credential-list li.selectable.active {
+  background: var(--hover);
+}
+.credential-list li.credential img {
+  flex: none;
+  width: 9px;
+  height: 17px;
+  padding: 0 3px;
+}
+.dark .credential-list li.credential img {
+  filter: invert(1);
+}
+.credential-list li.credential > div,
+.credential-list li.credential > p {
+  min-width: 0;
+}
+/* The popup puts name and site directly in the row: stack them next to the icon. */
+.popup .credential-list li.credential {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  gap: 0 10px;
+  padding-block: 5px;
+  line-height: 1.3;
+}
+.popup .credential-list li.credential img {
+  grid-row: span 2;
+  align-self: center;
+}
+.credential-list li.credential .name,
+.credential-list li.credential .website,
+.credential-list li .totpwebsite {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.credential-list li.credential .name {
+  font-size: 13px;
+}
+.credential-list li.credential .name.no-user-name {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.credential-list li.credential .website {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+.credential-list li.open-password-manager,
+.credential-list li.strong-password:not(.credential) {
+  color: var(--text);
+}
+.popup .credential-list li.open-password-manager {
+  margin-top: 4px;
+  border-top: 1px solid var(--separator);
+  border-radius: 0 0 6px 6px;
+}
+.popup .credential-list li.strong-password {
+  color: var(--accent);
+  font-weight: 500;
+}
+.credential-list li.open-password-manager p.subtitle {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+.credential-list li .menuIcon {
+  width: 18px;
+  height: 18px;
+}
+.credential-list br {
+  display: none;
+}
+
+/* ---------- In-page completion list ---------- */
+/* Rows are full-bleed: the iframe is sized from the rows' own widths and heights. */
+.completionList .box {
+  display: block;
+  padding: 0;
+}
+.completionList .credential-list li {
+  border-radius: 0;
+  padding-inline: 12px;
+}
+.completionList .credential-list li.iCloudPasswords {
+  min-height: 0;
+  gap: 6px;
+  padding: 6px 12px 3px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+}
+.completionList .credential-list li.iCloudPasswords .fromiCloudPasswordsMenuIcon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+}
+.completionList .credential-list li.strong-password .name {
+  font-weight: 500;
+}
+.completionList .credential-list li.open-password-manager {
+  border-top: 1px solid var(--separator);
+}
+/* Measurement pass used to size the iframe. */
+.credential-list.inline li {
+  display: inline-flex;
+  width: max-content;
+}
+
+body.dark.visibleScroller::-webkit-scrollbar {
+  width: 14px;
+}
+body.dark.visibleScroller::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.28) padding-box;
+}
+
+/* Pairing prompt shown in the completion list */
+#needToPairMessageBox {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  width: 290px;
+  padding: 8px 10px;
+}
+#needToPairMessageBox .imageContainer img {
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+#needToPairMessageBox #needToPairTitle {
+  font-weight: 600;
+}
+#needToPairMessageBox #needToPairMessage {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: normal;
+}

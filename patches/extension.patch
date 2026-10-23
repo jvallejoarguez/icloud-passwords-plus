@@ -1,0 +1,697 @@
+diff --git a/background.js b/background.js
+index 67a5d47..10e3b24 100644
+--- a/background.js
++++ b/background.js
+@@ -2575,6 +2575,7 @@ class CompletionListCoordinator {
+         break;
+       case "fillLoginIntoForm":
+       case "fillOneTimeCodeIntoForm":
++      case "fillGeneratedPassword":
+         this.#re(e);
+         break;
+       case "getContextAndMetadataFromContent":
+@@ -3066,6 +3067,11 @@ function connectToBackgroundNativeAppAndSetUpListeners() {
+           case "getCapabilities":
+             r(g_nativeAppCapabilities);
+             break;
++          case "rememberGeneratedPassword":
++            chrome.storage.session.set({
++              [generatedPasswordStorageKey(s.tab.url)]: { password: e.password, date: Date.now() },
++            });
++            break;
+           case "readyToReceiveMessages":
+             g_tabMonitor.frameIsReadyToReceiveMessages(i, n);
+             break;
+@@ -3536,6 +3542,9 @@ async function getCurrentActiveTabAndItsFrames() {
+ function canFillOneTimeCodes() {
+   return (g_nativeAppCapabilities || DefaultCapabilities).canFillOneTimeCodes;
+ }
++function generatedPasswordStorageKey(e) {
++  return "generatedPassword:" + (urlFromURLString(e)?.hostname ?? "");
++}
+ function setUpPortToPopup(e) {
+   (g_portToPopup = e),
+     e.onMessage.addListener(function (s) {
+@@ -3574,8 +3583,7 @@ function setUpPortToPopup(e) {
+       }
+     }),
+     e.onDisconnect.addListener(function () {
+-      g_theState === ContextState.MSG1Set && (g_nativeAppPort.postMessage({ cmd: 19 }), PINSet("")),
+-        (g_portToPopup = null);
++      g_portToPopup = null;
+     }),
+     sendMessageToPopup({ subject: "hello", capabilities: g_nativeAppCapabilities });
+ }
+diff --git a/completion_list.js b/completion_list.js
+index b1b5ab2..a1f0825 100644
+--- a/completion_list.js
++++ b/completion_list.js
+@@ -366,6 +366,7 @@ let g_presetUserName,
+   g_canFillOneTimeCodes = !1,
+   g_isIncognito = !1,
+   g_oneTimeCodes = [],
++  g_state = null,
+   g_extensionSettings = new ExtensionSettings(!0);
+ const RequestDataState = { DoNotRequest: 0, WillOrAreRequesting: 1, RequestReturnedData: 2 };
+ let g_requestOneTimeCodesState = RequestDataState.DoNotRequest,
+@@ -480,8 +481,9 @@ function showChoices(e, t, n, o, s, i, a, r, l, c, d, g, u) {
+   }
+   for (const e of w) m.appendChild(e);
+   for (const e of S) m.appendChild(e);
+-  const b = capabilitiesDeclaresMacOS(g_capabilities);
+-  if (b && g) for (const e of strongPasswordSuggestionListItems(s)) m.appendChild(e);
++  // Only paired sessions can save what we generate.
++  if (g && g_state === ContextState.SessionKeySet)
++    for (const e of strongPasswordSuggestionListItems(s)) m.appendChild(e);
+   else if (m.children.length || isStringEmpty(c)) {
+     const e = !m.children.length;
+     m.appendChild(newOpenPasswordManagerButtonListItem(e, s));
+@@ -669,48 +671,24 @@ function iCloudPasswordsListItem() {
+   );
+ }
+ function strongPasswordSuggestionListItems(e) {
+-  let t = document.createElement("li");
+-  t.classList.add("strongPasswordSuggestion"),
+-    (t.innerHTML = `<p class="title">${g_localizer.getMessage("strongPasswordSuggestion")}</p>`);
+-  let n = selectableAndHoverableListItem();
+-  if (
+-    (n.classList.add("open-safari"),
+-    (n.innerHTML = `<span><img src="images/safari_macos.png" class="menuIcon">${g_localizer.getMessage("openThisPageInSafari")}</span>`),
+-    addEffectiveClickEventListener(n, function () {
+-      sendMessageToBackgroundPage({ tabId: g_tabId, frameId: g_frameId, subject: "openURLInSafari", url: e });
+-    }),
+-    g_capabilities.canOpenPasswordsAppToNewPasswordSheet)
+-  ) {
+-    let o = selectableAndHoverableListItem();
+-    return (
+-      o.classList.add("open-password-manager"),
+-      (o.innerHTML = `<span><img src="images/PasswordsExtensionIcon_128.png" class="menuIcon">${g_localizer.getMessage("openPasswordsAppToNewPasswordSheet")}</span>`),
+-      addEffectiveClickEventListener(o, () => {
+-        sendMessageToBackgroundPage({
+-          tabId: g_tabId,
+-          frameId: g_frameId,
+-          subject: "openPasswordsAppToNewPasswordSheetAndDismissCompletionList",
+-          url: e,
+-        });
+-      }),
+-      [t, o, n]
+-    );
+-  }
+-  {
+-    let e = selectableAndHoverableListItem();
+-    return (
+-      e.classList.add("open-password-manager"),
+-      (e.innerHTML = `<span><img src="images/PasswordsExtensionIcon_128.png" class="menuIcon">${g_localizer.getMessage("openPasswordsSettings")}</span>`),
+-      addEffectiveClickEventListener(e, () => {
+-        sendMessageToBackgroundPage({
+-          tabId: g_tabId,
+-          frameId: g_frameId,
+-          subject: "openPasswordManagerAndDismissCompletionList",
+-        });
+-      }),
+-      [t, e, n]
+-    );
+-  }
++  let t = newCredentialListItem();
++  t.classList.add("strong-password", "active");
++  let n = document.createElement("p");
++  n.classList.add("name"), (n.textContent = g_localizer.getMessage("useStrongPassword"));
++  let o = document.createElement("p");
++  o.classList.add("website"), (o.textContent = g_localizer.getMessage("useStrongPasswordDetail"));
++  let r = document.createElement("div");
++  r.append(n, o),
++    t.appendChild(r),
++    addEffectiveClickEventListener(t, () => {
++      sendMessageToBackgroundPage({
++        from: "completionList",
++        subject: "fillGeneratedPassword",
++        tabId: g_tabId,
++        frameId: g_frameId,
++      });
++    });
++  return [t, newOpenPasswordManagerButtonListItem(!1, e)];
+ }
+ function updateTheme(e) {
+   let t = document.body.querySelector(".fromiCloudPasswordsMenuIcon");
+@@ -766,7 +744,8 @@ function messageBoxToExplainPINPairing(e, t) {
+   return (r.id = "needToPairMessage"), (r.textContent = t), i.appendChild(r), n.appendChild(i), n;
+ }
+ function updateCompletionList(e, t, n) {
+-  if (e === ContextState.NotInSession) {
++  g_state = e;
++  if (e === ContextState.NotInSession || e === ContextState.ChallengeSent || e === ContextState.MSG1Set) {
+     if (!isStringEmpty(t.ControlValue)) return;
+     const e = completionListActionWhenUnpaired();
+     let n,
+diff --git a/content_script.js b/content_script.js
+index 964b8d0..c10e15d 100644
+--- a/content_script.js
++++ b/content_script.js
+@@ -1477,7 +1477,7 @@ class PasswordRuleSet {
+       (this.minLengthRule = Math.max(this.minLengthRule, e.value));
+   }
+   #y(e) {
+-    null === this.minLengthRule && (this.minLengthRule = 1 / 0),
++    null === this.maxLengthRule && (this.maxLengthRule = 1 / 0),
+       (this.maxLengthRule = Math.min(this.maxLengthRule, e.value));
+   }
+   #C() {
+@@ -1508,11 +1508,12 @@ function addPasswordRequirementsToFormMetadata(e) {
+   let s,
+     l = null,
+     c = null;
+-  if (i?.ControlPasswordRules) {
++  const canParsePasswordRules = "function" == typeof globalThis.parsePasswordRules;
++  if (canParsePasswordRules && i?.ControlPasswordRules) {
+     const e = parsePasswordRules(i?.ControlPasswordRules, !1);
+     l = new PasswordRuleSet(e);
+   }
+-  if (a?.ControlPasswordRules) {
++  if (canParsePasswordRules && a?.ControlPasswordRules) {
+     const e = parsePasswordRules(a?.ControlPasswordRules, !1);
+     c = new PasswordRuleSet(e);
+   }
+@@ -15653,7 +15654,7 @@ class CompletionListLayoutController {
+     let c;
+     try {
+       c = chrome.runtime.getURL(
+-        `completion_list.html?username=${r}&colorScheme=${a}&screenX=${window.screenX}&screenY=${window.screenY}&effectiveWindowWidth=${l}&isDark=${s}`,
++        `completion_list.html?username=${encodeURIComponent(r)}&colorScheme=${a}&screenX=${window.screenX}&screenY=${window.screenY}&effectiveWindowWidth=${l}&isDark=${s}`,
+       );
+     } catch (e) {
+       return void (isExtensionContextInvalidatedError(e) && cleanUpGlobalState());
+@@ -15672,15 +15673,12 @@ class CompletionListLayoutController {
+       this.#ie.style.setProperty("color-scheme", "normal", "important"),
+       this.#ie.style.setProperty(
+         "box-shadow",
+-        "0 2px 4px 0 rgba(0, 0, 0, 0.15), 0 8px 15px 6px rgba(0, 0, 0, 0.18)",
++        "0 1px 2px rgba(0, 0, 0, 0.18), 0 6px 18px 2px rgba(0, 0, 0, 0.16)",
+         "important",
+       ),
+       this.#ie.style.setProperty("border", `1px solid ${this.#ue(s)}`, "important"),
+       this.#ie.style.setProperty("overflow", "hidden", "important"),
+-      CSS.supports("backdrop-filter", "none")
+-        ? (this.#ie.style.setProperty("backdrop-filter", "blur(20px)", "important"),
+-          this.#ie.style.setProperty("background-color", this.#me(s), "important"))
+-        : this.#ie.style.setProperty("background-color", this.#he(s), "important");
++      this.#ie.style.setProperty("background-color", this.#he(s), "important");
+     let d = Math.round(e.y + e.height) + "px",
+       u = Math.round(e.x) + "px";
+     this.#ie.style.setProperty("top", d, "important"),
+@@ -15700,23 +15698,17 @@ class CompletionListLayoutController {
+   async updateColorScheme(e) {
+     if (this.#ie) {
+       this.#ie.style.setProperty("border", `1px solid ${this.#ue(e)}`, "important"),
+-        this.#ie.style.setProperty("background-color", this.#fe(), "important");
++        this.#ie.style.setProperty("background-color", this.#he(e), "important");
+       try {
+         await sendRuntimeMessage({ from: "content", subject: "prefersColorSchemeChanged", isDark: e });
+       } catch (e) {}
+     }
+   }
+-  #fe(e) {
+-    return CSS.supports("backdrop-filter", "none") ? this.#me(e) : this.#he(e);
+-  }
+-  #me(e) {
+-    return e ? "rgba(35, 35, 35, 0.83)" : "rgba(230, 230, 230, 0.8)";
+-  }
+   #he(e) {
+-    return e ? "rgb(35, 35, 35)" : "rgb(230, 230, 230)";
++    return e ? "rgb(32, 33, 37)" : "rgb(255, 255, 255)";
+   }
+   #ue(e) {
+-    return e ? "rgba(0, 0, 0, 0.9)" : "rgba(0, 0, 0, 0.2)";
++    return e ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.1)";
+   }
+   #le(e) {
+     e === this.#Y && (this.#Y = null);
+@@ -15793,7 +15785,7 @@ class CompletionListLayoutController {
+     return !0;
+   }
+   #we(e) {
+-    if (!this.#ie) return;
++    if (!this.#ie || !this.#ce) return;
+     getComputedStyle(this.#ie);
+     this.#ne = setInterval(() => {
+       if (!this.#ie) return void this.#de();
+@@ -16350,6 +16342,129 @@ function fillLoginIntoForm(e, t, o, r, n, i) {
+       .then((e) => {})
+       .catch((e) => {});
+ }
++const StrongPasswordCharacterClasses = {
++  lower: "abcdefghijklmnopqrstuvwxyz",
++  upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
++  digit: "0123456789",
++  special: "-~!@#$%^&*_+=`|(){}[:;\"'<>,.?] ",
++};
++StrongPasswordCharacterClasses["ascii-printable"] =
++  StrongPasswordCharacterClasses.lower +
++  StrongPasswordCharacterClasses.upper +
++  StrongPasswordCharacterClasses.digit +
++  StrongPasswordCharacterClasses.special;
++StrongPasswordCharacterClasses.unicode = StrongPasswordCharacterClasses["ascii-printable"];
++function randomIndex(e) {
++  const t = 4294967296 - (4294967296 % e),
++    o = new Uint32Array(1);
++  do crypto.getRandomValues(o);
++  while (o[0] >= t);
++  return o[0] % e;
++}
++function randomCharacter(e) {
++  return e[randomIndex(e.length)];
++}
++function passwordRuleCharacters(e) {
++  let t = "";
++  for (const o of e.matchAll(/\[([^\]]*)\]|[a-z-]+/gi))
++    t += void 0 !== o[1] ? o[1] : StrongPasswordCharacterClasses[o[0].toLowerCase()] || "";
++  return [...new Set(t)].join("");
++}
++// https://developer.apple.com/password-rules/ — the subset that matters for generating.
++function parseStrongPasswordRules(e) {
++  const t = { allowed: "", required: [], maxConsecutive: 1 / 0, minLength: 0, maxLength: 1 / 0 };
++  for (const o of (e || "").split(";")) {
++    const e = o.indexOf(":");
++    if (e < 0) continue;
++    const r = o.slice(0, e).trim().toLowerCase(),
++      n = o.slice(e + 1).trim(),
++      i = parseInt(n, 10);
++    "minlength" === r && i > 0 && (t.minLength = Math.max(t.minLength, i)),
++      "maxlength" === r && i > 0 && (t.maxLength = Math.min(t.maxLength, i)),
++      "max-consecutive" === r && i > 0 && (t.maxConsecutive = Math.min(t.maxConsecutive, i)),
++      "allowed" === r && (t.allowed += passwordRuleCharacters(n)),
++      "required" === r && passwordRuleCharacters(n) && t.required.push(passwordRuleCharacters(n));
++  }
++  return (
++    t.required.length || t.allowed
++      ? t.allowed && (t.allowed += t.required.join(""))
++      : (t.required = ["lower", "upper", "digit"].map((e) => StrongPasswordCharacterClasses[e])),
++    t
++  );
++}
++function passwordSatisfiesStrongPasswordRules(e, t) {
++  const o = [...e];
++  return (
++    o.length >= t.minLength &&
++    o.length <= t.maxLength &&
++    (!t.allowed || o.every((e) => t.allowed.includes(e))) &&
++    t.required.every((e) => o.some((t) => e.includes(t))) &&
++    !(isFinite(t.maxConsecutive) && o.some((e, r) => o.slice(r, r + t.maxConsecutive + 1).join("") === e.repeat(t.maxConsecutive + 1)))
++  );
++}
++// Same shape as Safari's: xxxxxx-xxxxxx-xxxxxx, pronounceable groups, one digit and one capital (~71 bits).
++function appleStyleStrongPassword() {
++  const e = [];
++  for (let t = 0; t < 3; t++) {
++    for (const t of "cvccvc") e.push(randomCharacter("c" === t ? "bcdfghjkmnpqrstvwxz" : "aeiouy"));
++    t < 2 && e.push("-");
++  }
++  e[[0, 5, 7, 12, 14, 19][randomIndex(6)]] = randomCharacter(StrongPasswordCharacterClasses.digit);
++  const t = e.flatMap((e, t) => (/[a-z]/.test(e) ? [t] : [])),
++    o = t[randomIndex(t.length)];
++  return (e[o] = e[o].toUpperCase()), e.join("");
++}
++// Avoid whitespace, quotes and backslashes in generated passwords unless a rule leaves nothing else.
++function typeableCharacters(e) {
++  return e.replace(/[\s"'`\\]/g, "") || e;
++}
++function generateStrongPassword(e) {
++  for (let t = 0; t < 8; t++) {
++    const t = appleStyleStrongPassword();
++    if (passwordSatisfiesStrongPasswordRules(t, e)) return t;
++  }
++  const t = typeableCharacters(
++      e.allowed ||
++        StrongPasswordCharacterClasses.lower + StrongPasswordCharacterClasses.upper + StrongPasswordCharacterClasses.digit,
++    ),
++    o = Math.min(Math.max(20, e.minLength), e.maxLength);
++  if (!t || !isFinite(o)) return null;
++  for (let r = 0; r < 200; r++) {
++    const r = Array.from({ length: o }, () => randomCharacter(t)),
++      n = [...r.keys()];
++    for (const t of e.required) {
++      if (!n.length) break;
++      r[n.splice(randomIndex(n.length), 1)[0]] = randomCharacter(typeableCharacters(t));
++    }
++    const i = r.join("");
++    if (passwordSatisfiesStrongPasswordRules(i, e)) return i;
++  }
++  return null;
++}
++async function fillGeneratedPassword(e) {
++  const t = g_passwordControls[e],
++    o = g_confirmPasswordControls[e],
++    r = [t, o].filter((e) => e?.control?.isConnected);
++  if (!r.length) return;
++  const n = parseStrongPasswordRules(r.map((e) => e.control.getAttribute("passwordrules")).filter(Boolean).join(";"));
++  for (const { control: e } of r)
++    e.maxLength > 0 && (n.maxLength = Math.min(n.maxLength, e.maxLength)),
++      e.minLength > 0 && (n.minLength = Math.max(n.minLength, e.minLength));
++  const i = generateStrongPassword(n);
++  if (!i) return;
++  g_completionListDriver?.hideCompletionList(), (g_isFilling = !0);
++  try {
++    const e = FormMetadataJS.textFieldOrSelectElementMetadata(r[0].control, 0)[1];
++    await FormMetadataJS.fillFormWithPassword(e.FormID, i, r[0].uniqueID);
++  } catch {}
++  g_isFilling = !1;
++  const a = {};
++  for (const e of r) e.value === i ? e.didAttemptToAutofillValue(i) : (a[e.uniqueID] = i);
++  Object.keys(a).length && fillControlsByID(a, r[0].uniqueID, e),
++    (g_lastSenderOfInformationToFill = e),
++    updateTrackedPassword(i),
++    sendRuntimeMessage({ from: "content", subject: "rememberGeneratedPassword", password: i }).catch(() => {});
++}
+ function detectPresetUserName(e, t, o) {
+   e.FormControls.forEach(function (t, o, r) {
+     t.ControlUniqueID !== e.UsernameElementUniqueID ||
+@@ -16569,6 +16684,9 @@ function runtimeMessageHandler(e, t, o) {
+     case "dismissCompletionList":
+       g_completionListDriver?.hideCompletionList();
+       break;
++    case "fillGeneratedPassword":
++      fillGeneratedPassword("popup" === e.from ? ForPageWideFill : ForCompletionList);
++      break;
+     case "getContextAndMetadataForActiveTextField": {
+       if (!g_focusedControl) return void e.subject;
+       let [t, r] = FormMetadataJS.textFieldOrSelectElementMetadata(g_focusedControl, 0);
+diff --git a/page_popup.js b/page_popup.js
+index 55be94b..ba5a79c 100644
+--- a/page_popup.js
++++ b/page_popup.js
+@@ -352,6 +352,8 @@ const ContextState = {
+   WBSAutoFillFormTypeChangePassword = 5,
+   WBSAutoFillFormTypeFoundTOTPURI = 6;
+ var g_lastUpdatedPopupContentsState,
++  g_pinWasSubmitted = !1,
++  g_strongPasswordTarget = null,
+   g_portToBackgroundPage = null,
+   g_appStoreURL = null,
+   g_capabilities = null,
+@@ -380,10 +382,9 @@ function showMessage(e, t, n) {
+ function showMessageWithOpenPasswordManagerButton(e, t, n) {
+   showMessage(e, t);
+   let o = document.querySelector("#openPasswordManagerList");
+-  if (!o.children.length) {
+-    o.appendChild(listItemForOpenPasswordManager());
+-    capabilitiesDeclaresMacOS(g_capabilities) && n && o.appendChild(listItemForOpenPageInSafari());
+-  }
++  o.children.length ||
++    (g_strongPasswordTarget && o.appendChild(listItemForStrongPassword()),
++    o.appendChild(listItemForOpenPasswordManager()));
+ }
+ function SetOpeniC4WTitleText(e) {
+   var t = document.getElementById("idOpeniC4WTitle");
+@@ -410,11 +411,11 @@ async function updatePopupContents(e) {
+   await Localizer.loadOperatingSystemFromClientHintsStorage();
+   const t = Localizer.provisionalOperatingSystem(),
+     n = /firefox/i.test(navigator.userAgent) && "windows" === t.name;
++  const isPINState = (e) => e === ContextState.ChallengeSent || e === ContextState.MSG1Set;
+   if (
+     !n &&
+     g_lastUpdatedPopupContentsState &&
+-    g_lastUpdatedPopupContentsState === ContextState.NativeSupportNotInstalled &&
+-    e === ContextState.NativeSupportNotInstalled
++    (g_lastUpdatedPopupContentsState === e || (isPINState(g_lastUpdatedPopupContentsState) && isPINState(e)))
+   )
+     return;
+   g_lastUpdatedPopupContentsState = e;
+@@ -427,7 +428,7 @@ async function updatePopupContents(e) {
+   chrome.tabs.query({ active: !0, currentWindow: !0 }, function (s) {
+     switch (e) {
+       case ContextState.IncompatibleOS:
+-        document.querySelector("#openPasswordManagerList").remove(),
++        document.querySelector("#openPasswordManagerList")?.remove(),
+           showMessage("extName", "unsupportedOS", !0);
+         break;
+       case ContextState.NativeSupportNotInstalled:
+@@ -440,7 +441,7 @@ async function updatePopupContents(e) {
+         const e =
+           "macos" === t.name && (t.majorVersion >= 14 || (10 === t.majorVersion && t.minorVersion >= 14));
+         !g_appStoreURL || n || e
+-          ? document.getElementById("downloadButton").remove()
++          ? document.getElementById("downloadButton")?.remove()
+           : setControlText("downloadButton", "downloadButton"),
+           tryToEstablishNativeConnectionInResponseToUserActivatingPopupAfterDelay();
+         break;
+@@ -455,7 +456,9 @@ async function updatePopupContents(e) {
+       case ContextState.ChallengeSent:
+       case ContextState.MSG1Set:
+         setControlText("divPINTitle", "enableAutoFillPasswordsTitle"),
+-          setControlText("divPINMessage", "divPINMessage"),
++          setControlText("divPINMessage", g_pinWasSubmitted ? "pinIncorrect" : "divPINMessage"),
++          document.getElementById("divPINMessage").classList.toggle("error", g_pinWasSubmitted),
++          (g_pinWasSubmitted = !1),
+           mapOverPINFields(function (e) {
+             (e.value = ""),
+               (e.disabled = !1),
+@@ -473,85 +476,7 @@ async function updatePopupContents(e) {
+         setMessageTitle("extName", "GettingPasswords"),
+           setControlText("divICsMessage", "divICsMessage"),
+           clearCredentialListContents();
+-        const e = s[0].id;
+-        chrome.webNavigation.getAllFrames({ tabId: e }, (t) => {
+-          t.forEach(async (t, n) => {
+-            JSON.stringify(t);
+-            const o = t.frameId,
+-              a = new URL(t.url);
+-            if (urlIsForCompletionList(a)) return;
+-            const i = a.protocol;
+-            if (
+-              ("outermost_frame" === t.frameType || -1 === t.parentFrameId) &&
+-              "http:" !== i &&
+-              "https:" !== i
+-            )
+-              return (
+-                t.url,
+-                void showMessageWithOpenPasswordManagerButton(
+-                  "GenericPopupTitle",
+-                  "divNoPasswordsMessage",
+-                  !1,
+-                )
+-              );
+-            let r;
+-            try {
+-              r = await chrome.tabs.sendMessage(
+-                e,
+-                { from: "popup", subject: "getPageType", URL: a.hostname, tabId: e, frameId: o },
+-                { frameId: o },
+-              );
+-            } catch (e) {
+-              e.message, (r = WBSAutoFillFormTypeUndetermined);
+-            }
+-            switch (
+-              (r || (a.hostname, s[0].id, t.frameId, (r = WBSAutoFillFormTypeUndetermined)),
+-              a.hostname,
+-              s[0].id,
+-              t.frameId,
+-              humanReadableFormType(r),
+-              humanReadableFormType(r),
+-              r)
+-            ) {
+-              case WBSAutoFillFormTypeUndetermined:
+-              case WBSAutoFillFormTypeAutoFillableStandard:
+-              case WBSAutoFillFormTypeNonAutoFillable:
+-                showMessageWithOpenPasswordManagerButton("GenericPopupTitle", "divNoPasswordsMessage", !0);
+-                break;
+-              case WBSAutoFillFormTypeAutoFillableLogin:
+-              case WBSAutoFillFormTypeChangePassword:
+-              case WBSAutoFillFormTypeNewAccount:
+-                showMessage("extName", "GettingPasswords"),
+-                  sendMessageToBackgroundPage({
+-                    subject: "GetLoginNames4URL",
+-                    hostname: a.hostname,
+-                    tabId: s[0].id,
+-                    frameId: t.frameId,
+-                  });
+-                break;
+-              case WBSAutoFillFormTypeFoundTOTPURI: {
+-                let e;
+-                try {
+-                  e = await chrome.tabs.sendMessage(
+-                    s[0].id,
+-                    {
+-                      from: "popup",
+-                      subject: "getTOTPSetupInfo",
+-                      URL: a.hostname,
+-                      tabId: s[0].id,
+-                      frameId: t.frameId,
+-                    },
+-                    { frameId: t.frameId },
+-                  );
+-                } catch (e) {
+-                  break;
+-                }
+-                updatePopupContentsWithTOTPSetupInfo(e, a.hostname, s[0].id, t.frameId);
+-                break;
+-              }
+-            }
+-          });
+-        });
++        showCredentialsForTab(s[0].id);
+         break;
+       }
+       default:
+@@ -702,10 +627,8 @@ async function updatePopupContents_ICs(e, t, n, o, s, a, i) {
+       for (const e of p) g.appendChild(e);
+       for (const e of h) g.appendChild(e);
+       for (const e of w) g.appendChild(e);
+-      g.appendChild(listItemForOpenPasswordManager());
+-      const S = capabilitiesDeclaresMacOS(g_capabilities),
+-        y = !urlIsBrowserURL(new URL(i.url));
+-      S && y && g.appendChild(listItemForOpenPageInSafari());
++      g_strongPasswordTarget && g.appendChild(listItemForStrongPassword()),
++        g.appendChild(listItemForOpenPasswordManager());
+       let f = document.querySelector("#divMessageBoard .credential-list");
+       f && f.remove(), (c.style.display = "block");
+       break;
+@@ -724,18 +647,92 @@ function listItemForOpenPasswordManager() {
+     e
+   );
+ }
+-function listItemForOpenPageInSafari() {
++function listItemForStrongPassword() {
+   let e = document.createElement("li");
+   return (
+-    e.classList.add("selectable"),
+-    e.classList.add("open-safari"),
++    e.classList.add("selectable", "strong-password"),
+     (e.onmouseover = listItemMouseOverHandler),
+     (e.onmouseout = listItemMouseOutHandler),
+-    (e.textContent = g_localizer.getMessage("openThisPageInSafari")),
+-    e.addEventListener("click", openThisPageInSafariButtonHandler),
++    (e.textContent = g_localizer.getMessage("useStrongPassword")),
++    e.addEventListener("click", async () => {
++      const { tabId: e, frameId: t } = g_strongPasswordTarget;
++      try {
++        await chrome.tabs.sendMessage(e, { from: "popup", subject: "fillGeneratedPassword" }, { frameId: t });
++      } catch {}
++      window.close();
++    }),
+     e
+   );
+ }
++const FormTypePriority = [
++  WBSAutoFillFormTypeNewAccount,
++  WBSAutoFillFormTypeChangePassword,
++  WBSAutoFillFormTypeAutoFillableLogin,
++  WBSAutoFillFormTypeFoundTOTPURI,
++];
++async function showCredentialsForTab(e) {
++  const t = (await chrome.webNavigation.getAllFrames({ tabId: e })) || [],
++    o = t.find((e) => -1 === e.parentFrameId),
++    n = urlFromURLString(o?.url);
++  if (!n || !urlStringIsHTTPFamilyURL(n.href))
++    return void showMessageWithOpenPasswordManagerButton("GenericPopupTitle", "divNoPasswordsMessage", !1);
++  const s = await Promise.all(
++    t
++      .filter((e) => urlStringIsHTTPFamilyURL(e.url))
++      .map(async (t) => {
++        const o = new URL(t.url);
++        let n;
++        try {
++          n = await chrome.tabs.sendMessage(
++            e,
++            { from: "popup", subject: "getPageType", URL: o.hostname, tabId: e, frameId: t.frameId },
++            { frameId: t.frameId },
++          );
++        } catch {}
++        return { frameId: t.frameId, hostname: o.hostname, isTop: -1 === t.parentFrameId, type: n };
++      }),
++  );
++  // Prefer the top frame, then the strongest form type.
++  const a = s
++    .filter((e) => FormTypePriority.includes(e.type))
++    .sort((e, t) => t.isTop - e.isTop || FormTypePriority.indexOf(e.type) - FormTypePriority.indexOf(t.type))[0];
++  if (!a) return void showMessageWithOpenPasswordManagerButton("GenericPopupTitle", "divNoPasswordsMessage", !0);
++  if (
++    ((g_strongPasswordTarget =
++      a.type === WBSAutoFillFormTypeNewAccount || a.type === WBSAutoFillFormTypeChangePassword
++        ? { tabId: e, frameId: a.frameId }
++        : null),
++    a.type === WBSAutoFillFormTypeFoundTOTPURI)
++  ) {
++    let t;
++    try {
++      t = await chrome.tabs.sendMessage(
++        e,
++        { from: "popup", subject: "getTOTPSetupInfo", URL: a.hostname, tabId: e, frameId: a.frameId },
++        { frameId: a.frameId },
++      );
++    } catch {
++      return;
++    }
++    return void updatePopupContentsWithTOTPSetupInfo(t, a.hostname, e, a.frameId);
++  }
++  showMessage("extName", "GettingPasswords"),
++    sendMessageToBackgroundPage({ subject: "GetLoginNames4URL", hostname: a.hostname, tabId: e, frameId: a.frameId });
++}
++async function showGeneratedPasswordForActiveTab() {
++  const [e] = await chrome.tabs.query({ active: !0, currentWindow: !0 }),
++    t = "generatedPassword:" + (urlFromURLString(e?.url)?.hostname ?? ""),
++    o = (await chrome.storage.session.get(t))[t];
++  if (!o) return;
++  const n = document.getElementById("copyGenerated");
++  setControlText("generatedTitle", "generatedPasswordTitle"),
++    (document.getElementById("generatedPassword").textContent = o.password),
++    (n.textContent = g_localizer.getMessage("copyButton")),
++    (n.onclick = async () => {
++      await navigator.clipboard.writeText(o.password), (n.textContent = g_localizer.getMessage("copiedButton"));
++    }),
++    (document.getElementById("divGenerated").hidden = !1);
++}
+ function prefersColorSchemeChangeEventHandler(e) {
+   setIsDark(e.matches);
+ }
+@@ -789,6 +786,7 @@ function pinKeyHandler(e) {
+   }
+ }
+ function submitPINFromFields() {
++  g_pinWasSubmitted = !0;
+   let e = mapOverPINFields(function (e) {
+     return (e.onkeydown = null), (e.onpaste = null), (e.oninput = null), (e.disabled = !0), e.value.trim();
+   }).join("");
+@@ -820,11 +818,6 @@ async function openPasswordsButtonHandler(e) {
+   }),
+     window.close();
+ }
+-function openThisPageInSafariButtonHandler(e) {
+-  chrome.tabs.query({ active: !0, currentWindow: !0 }, (e) => {
+-    sendMessageToBackgroundPage({ subject: "openURLInSafari", url: e[0].url }), window.close();
+-  });
+-}
+ Localizer.loadOperatingSystemFromClientHintsStorage(),
+   document.documentElement.addEventListener("keydown", function (e) {
+     let t = document.querySelector("li.active"),
+@@ -843,6 +836,7 @@ Localizer.loadOperatingSystemFromClientHintsStorage(),
+         return s && (t.classList.remove("active"), s.classList.add("active")), !1;
+       case "Enter":
+         if (t) return e.preventDefault(), t.click(), !1;
++        break;
+       case "Escape":
+         return void window.close();
+     }
+@@ -884,7 +878,8 @@ Localizer.loadOperatingSystemFromClientHintsStorage(),
+         g_portToBackgroundPage.onDisconnect.addListener(() => {
+           g_portToBackgroundPage = null;
+         }),
+-        sendMessageToBackgroundPage({ subject: "getInitialPopupState" });
++        sendMessageToBackgroundPage({ subject: "getInitialPopupState" }),
++        showGeneratedPasswordForActiveTab();
+       let e = document.createElement("span");
+       e.textContent = g_localizer.getMessage("extName");
+       let t = document.createElement("picture"),
+@@ -912,11 +907,9 @@ Localizer.loadOperatingSystemFromClientHintsStorage(),
+   (document.getElementById("idOpeniC4WButton").onclick = function () {
+     sendMessageToBackgroundPage({ subject: "startiCloudControlPanel" }), window.close();
+   }),
+-  (document.getElementById("dismiss").onclick = function () {
+-    window.close();
+-  }),
+-  (window.onfocus = () => {
+-    sendMessageToBackgroundPage({ subject: "getInitialPopupState" });
++  (document.getElementById("openSettings").title = g_localizer.getMessage("optionsTitle")),
++  (document.getElementById("openSettings").onclick = function () {
++    chrome.runtime.openOptionsPage(), window.close();
+   });
+ try {
+   chrome.runtime.onMessage.addListener((e, t, n) => {
