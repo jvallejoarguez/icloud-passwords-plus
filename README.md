@@ -37,6 +37,8 @@ This repository does **not** contain Apple's code. `build.mjs` downloads the off
 - Usernames containing `&`, `#` or `%` broke the list. Fixed.
 - Apple's build calls `parsePasswordRules` but never ships it, so reading a form threw on any page whose password field has a `passwordrules` attribute. That call is now guarded.
 - While a code is pending, the list offers pairing instead of failing silently.
+- Sign-ins that ask for the email alone first ("Continue", "Next", "Continuar", "Siguiente", "Iniciar sesión") now get the list. Apple read a lone email box as a search or sign-up form and never offered it.
+- Clicking a field that already has focus reopens the list after Esc, a scroll or a resize closed it.
 
 ## Install
 

@@ -144,7 +144,7 @@ index b1b5ab2..a1f0825 100644
      const e = completionListActionWhenUnpaired();
      let n,
 diff --git a/content_script.js b/content_script.js
-index 964b8d0..c10e15d 100644
+index 964b8d0..de8434c 100644
 --- a/content_script.js
 +++ b/content_script.js
 @@ -1477,7 +1477,7 @@ class PasswordRuleSet {
@@ -171,7 +171,43 @@ index 964b8d0..c10e15d 100644
      const e = parsePasswordRules(a?.ControlPasswordRules, !1);
      c = new PasswordRuleSet(e);
    }
-@@ -15653,7 +15654,7 @@ class CompletionListLayoutController {
+@@ -3316,6 +3317,25 @@ class FormMetadata {
+         this._cachedElementPatternMatch(e, "_usernameFieldPatternMatch", "usernameFieldLabelPatternMatchers")
+     );
+   }
++  // Two-step sign-ins ask for the email alone first. A lone email box reads as a search or sign-up form, so it was
++  // never offered; treat it as the username when its nearest button signs in or continues.
++  _looksLikeEmailFirstSignInStep(e) {
++    if ("INPUT" !== e.tagName || e.readOnly || !this._isLabeledEmailField(e) || e.closest("footer")) return !1;
++    const t = "button, input[type=submit], [role=button]";
++    let o = e.form || e.parentElement;
++    for (; o && !o.querySelector(t); ) o = o.parentElement;
++    return (
++      !!o &&
++      ![...o.querySelectorAll("input")].some(
++        (t) => t !== e && "search" !== t.type && this._isAutoFillableTextField(t) && t.isVisible(),
++      ) &&
++      [...o.querySelectorAll(t)].some((e) =>
++        /\b(sign[\s-]?in|log[\s-]?in|continue|next|iniciar?[\s-]?sesi[oó]n|entrar|acceder|ingresar|continuar|siguiente)\b/i.test(
++          e.textContent || e.value || e.getAttribute("aria-label") || "",
++        ),
++      )
++    );
++  }
+   _isLabeledLoginField(e) {
+     return (
+       !!this._isAutoFillableTextField(e) &&
+@@ -3878,7 +3898,8 @@ class FormMetadata {
+       e.readOnly && (l.ControlIsReadOnly = !0),
+       this._isTextField(e) && (l.ControlIsTextField = !0),
+       this._isSecureTextField(e) && (l.ControlIsSecureTextField = !0),
+-      this._isLabeledUsernameField(e) && (l.ControlIsLabeledUsernameField = !0),
++      (this._isLabeledUsernameField(e) || this._looksLikeEmailFirstSignInStep(e)) &&
++        (l.ControlIsLabeledUsernameField = !0),
+       this._elementDisallowsAutocomplete(e) && (l.DisallowsAutocomplete = !0),
+       this._isAutofocusedTextField(e) && (l.ControlIsAutofocusedTextField = !0),
+       (l.ControlAutoFillButtonType = e.autofillButtonType),
+@@ -15653,7 +15674,7 @@ class CompletionListLayoutController {
      let c;
      try {
        c = chrome.runtime.getURL(
@@ -180,7 +216,7 @@ index 964b8d0..c10e15d 100644
        );
      } catch (e) {
        return void (isExtensionContextInvalidatedError(e) && cleanUpGlobalState());
-@@ -15672,15 +15673,12 @@ class CompletionListLayoutController {
+@@ -15672,15 +15693,12 @@ class CompletionListLayoutController {
        this.#ie.style.setProperty("color-scheme", "normal", "important"),
        this.#ie.style.setProperty(
          "box-shadow",
@@ -198,7 +234,7 @@ index 964b8d0..c10e15d 100644
      let d = Math.round(e.y + e.height) + "px",
        u = Math.round(e.x) + "px";
      this.#ie.style.setProperty("top", d, "important"),
-@@ -15700,23 +15698,17 @@ class CompletionListLayoutController {
+@@ -15700,23 +15718,17 @@ class CompletionListLayoutController {
    async updateColorScheme(e) {
      if (this.#ie) {
        this.#ie.style.setProperty("border", `1px solid ${this.#ue(e)}`, "important"),
@@ -225,7 +261,7 @@ index 964b8d0..c10e15d 100644
    }
    #le(e) {
      e === this.#Y && (this.#Y = null);
-@@ -15793,7 +15785,7 @@ class CompletionListLayoutController {
+@@ -15793,7 +15805,7 @@ class CompletionListLayoutController {
      return !0;
    }
    #we(e) {
@@ -234,7 +270,7 @@ index 964b8d0..c10e15d 100644
      getComputedStyle(this.#ie);
      this.#ne = setInterval(() => {
        if (!this.#ie) return void this.#de();
-@@ -16350,6 +16342,129 @@ function fillLoginIntoForm(e, t, o, r, n, i) {
+@@ -16350,6 +16362,129 @@ function fillLoginIntoForm(e, t, o, r, n, i) {
        .then((e) => {})
        .catch((e) => {});
  }
@@ -364,7 +400,7 @@ index 964b8d0..c10e15d 100644
  function detectPresetUserName(e, t, o) {
    e.FormControls.forEach(function (t, o, r) {
      t.ControlUniqueID !== e.UsernameElementUniqueID ||
-@@ -16569,6 +16684,9 @@ function runtimeMessageHandler(e, t, o) {
+@@ -16569,6 +16704,9 @@ function runtimeMessageHandler(e, t, o) {
      case "dismissCompletionList":
        g_completionListDriver?.hideCompletionList();
        break;
@@ -374,6 +410,37 @@ index 964b8d0..c10e15d 100644
      case "getContextAndMetadataForActiveTextField": {
        if (!g_focusedControl) return void e.subject;
        let [t, r] = FormMetadataJS.textFieldOrSelectElementMetadata(g_focusedControl, 0);
+@@ -16758,6 +16896,14 @@ function shouldOfferCompletionListForField(e, t, o) {
+ function focusInEventHandler(e) {
+   elementWasFocused(e.target);
+ }
++// Clicking the field that already has focus (after Esc, a scroll or a resize closed the list) fires no focusin.
++function mouseDownEventHandler(e) {
++  const t = innermostActiveElement();
++  e.composedPath()[0] !== t ||
++    g_completionListDriver.cachedIsCompletionListVisible ||
++    g_completionListDriver.cachedIsCompletionListRequested ||
++    elementWasFocused(t);
++}
+ function elementWasFocused(e) {
+   let t = innermostActiveElement(e);
+   if (!t || !FormMetadataJS._isAutoFillableTextField(t)) return void (g_focusedControl = null);
+@@ -16907,6 +17053,7 @@ function addEventListeners() {
+       .addEventListener("change", prefersColorSchemeChangeEventHandler),
+     document.addEventListener("focusin", focusInEventHandler),
+     document.addEventListener("focusout", focusOutEventHandler),
++    document.addEventListener("mousedown", mouseDownEventHandler),
+     document.addEventListener("keydown", keyDownEventHandler),
+     document.addEventListener("input", inputEventHandler),
+     document.documentElement.addEventListener("toggle", toggleEventHandler, { capture: !0 }),
+@@ -16926,6 +17073,7 @@ function removeEventListeners() {
+       .removeEventListener("change", prefersColorSchemeChangeEventHandler),
+     document.removeEventListener("focusin", focusInEventHandler),
+     document.removeEventListener("focusout", focusOutEventHandler),
++    document.removeEventListener("mousedown", mouseDownEventHandler),
+     document.removeEventListener("keydown", keyDownEventHandler),
+     document.removeEventListener("input", inputEventHandler),
+     document.documentElement.removeEventListener("toggle", toggleEventHandler, { capture: !0 }),
 diff --git a/page_popup.js b/page_popup.js
 index 55be94b..ba5a79c 100644
 --- a/page_popup.js
