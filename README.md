@@ -45,17 +45,29 @@ This repository does **not** contain Apple's code. `build.mjs` downloads the off
 You need macOS with iCloud Keychain, a Chromium browser where Apple's extension already works, [Node.js](https://nodejs.org) 18 or later, and git.
 
 ```bash
+npx github:jvallejoarguez/icloud-passwords-plus
+```
+
+This builds the extension into `~/Library/Application Support/iCloud Passwords+` and copies that path to your clipboard.
+
+1. Open your browser's extensions page (`brave://extensions`, `chrome://extensions`, …) and turn on **Developer mode**.
+2. Remove the Web Store **iCloud Passwords**. Both copies share one ID, so the browser won't load both.
+3. Click **Load unpacked**. The Library folder is hidden in the picker, so press ⌘⇧G, paste the path and press Return.
+4. Click the toolbar key and enter the code your Mac shows.
+
+### Update
+
+Unpacked extensions don't auto-update. Run the same command again, then click reload on the extensions page. That picks up the latest version of both this patch and Apple's extension. If Apple changes the code enough that the patch no longer applies, the build stops with a message and leaves your installed copy as it was. Please open an issue when that happens.
+
+### Build from a clone
+
+```bash
 git clone https://github.com/jvallejoarguez/icloud-passwords-plus.git
 cd icloud-passwords-plus
 node build.mjs
 ```
 
-1. Open your browser's extensions page (`brave://extensions`, `chrome://extensions`, …) and turn on **Developer mode**.
-2. Remove the Web Store **iCloud Passwords**. Both copies share one ID, so the browser won't load both.
-3. Click **Load unpacked** and pick the `dist` folder.
-4. Click the toolbar key and enter the code your Mac shows.
-
-Unpacked extensions don't auto-update. To pick up Apple's latest version, run `git pull && node build.mjs`, then click reload on the extensions page. If Apple changes the code enough that the patch no longer applies, the build stops with a message. Please open an issue when that happens.
+This builds into `dist` instead. To update, run `git pull && node build.mjs`.
 
 ## How it works
 
