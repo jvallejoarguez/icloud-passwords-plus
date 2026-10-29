@@ -1,0 +1,19 @@
+{
+  "name": "icloud-passwords-plus",
+  "version": "1.0.0",
+  "description": "Patch for Apple's iCloud Passwords extension on Brave/Chromium: native popup, local strong passwords, bug fixes.",
+  "license": "MIT",
+  "repository": "github:jvallejoarguez/icloud-passwords-plus",
+  "bin": {
+    "icloud-passwords-plus": "install.mjs"
+  },
+  "files": [
+    "build.mjs",
+    "install.mjs",
+    "overlay",
+    "patches"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

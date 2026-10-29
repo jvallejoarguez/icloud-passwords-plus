@@ -1,14 +1,19 @@
 #!/usr/bin/env node
-// Builds iCloud Passwords+ into ./dist from Apple's official iCloud Passwords extension (Chrome Web Store).
-// Apple's code is downloaded at build time, never stored in this repository.
+// Builds iCloud Passwords+ into ./dist (or the folder after --out) from Apple's official iCloud Passwords extension
+// (Chrome Web Store). Apple's code is downloaded at build time, never stored in this repository.
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const OUT = join(ROOT, "dist");
+const outFlag = process.argv.indexOf("--out");
+const OUT = outFlag === -1 ? join(ROOT, "dist") : resolve(process.argv[outFlag + 1] ?? "");
+// The output folder is wiped on every build, so only ever replace an earlier build.
+const firstBuild = !existsSync(join(OUT, "manifest.json"));
+if (firstBuild && existsSync(OUT) && readdirSync(OUT).length)
+  throw new Error(`${OUT} isn't empty and doesn't hold an earlier build. Pick another folder.`);
 // Same ID as the store build: macOS's helper only talks to this ID, and the CRX manifest carries its public key.
 const EXTENSION_ID = "pejdijmoenmkgeppbflobdenhhabjlaj";
 const PATCHED_VERSION = "3.4.0";
@@ -100,4 +105,15 @@ try {
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
-console.log(`\nBuilt ${OUT}\nLoad it from your browser's extensions page: Developer mode → Load unpacked → pick that folder.`);
+if (!firstBuild) {
+  console.log(`\nUpdated ${OUT}\nClick reload on iCloud Passwords+ in your browser's extensions page.`);
+} else {
+  console.log(`\nBuilt ${OUT}\nLoad it from your browser's extensions page: Developer mode → Load unpacked → pick that folder.`);
+  // ~/Library is hidden in the folder picker, so hand over the path for ⌘⇧G.
+  try {
+    if (process.platform === "darwin") {
+      execFileSync("pbcopy", { input: OUT });
+      console.log("The path is on your clipboard: in the folder picker, press ⌘⇧G, paste it and press Return.");
+    }
+  } catch {}
+}
